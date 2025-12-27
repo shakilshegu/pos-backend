@@ -66,4 +66,27 @@ export class CompanyController {
       next(error);
     }
   };
+
+  updateProfileImage = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { profileImageUrl } = req.body;
+      const user = req.user!;
+
+      // Validate profileImageUrl
+      if (!profileImageUrl || typeof profileImageUrl !== 'string') {
+        return ApiResponse.badRequest(res, 'profileImageUrl is required and must be a valid URL');
+      }
+
+      // Validate user owns company (unless SUPER_ADMIN)
+      if (user.companyId !== id && user.role !== 'SUPER_ADMIN') {
+        return ApiResponse.forbidden(res, 'Access denied');
+      }
+
+      const result = await this.companyService.updateProfileImage(id, profileImageUrl);
+      return ApiResponse.success(res, result, 'Profile image updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  };
 }

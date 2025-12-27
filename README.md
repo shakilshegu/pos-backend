@@ -17,6 +17,7 @@ A production-ready POS backend built with Node.js, Express, TypeScript, PostgreS
 - ✅ Permission-based authorization
 - ✅ Product management with stock tracking
 - ✅ Order & Payment processing
+- ✅ AWS S3 image upload for products, variants, and company profiles
 - ✅ Clean separation of concerns
 - ✅ Centralized error handling
 
@@ -97,13 +98,24 @@ pos-backend/
 
 3. **Configure environment variables**
 
-   Update the `.env` file with your configuration:
+   Copy `.env.example` to `.env` and update with your configuration:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Update the `.env` file:
    ```env
    DATABASE_URL="postgresql://user:password@localhost:5432/pos_db?schema=public"
    JWT_SECRET="your-super-secret-jwt-key-change-in-production"
    JWT_EXPIRES_IN="7d"
    PORT=3000
    NODE_ENV="development"
+
+   # AWS S3 (for image uploads)
+   AWS_REGION="us-east-1"
+   AWS_ACCESS_KEY_ID="your-aws-access-key"
+   AWS_SECRET_ACCESS_KEY="your-aws-secret-key"
+   AWS_S3_BUCKET="pos-system-bucket"
    ```
 
 4. **Setup database**

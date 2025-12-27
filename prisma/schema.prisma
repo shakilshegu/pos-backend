@@ -83,14 +83,15 @@ enum ShiftStatus {
 }
 
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  phone     String?
-  address   String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String
+  email           String   @unique
+  phone           String?
+  address         String?
+  profileImageUrl String?  // S3 image URL
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   stores     Store[]
   users      User[]
@@ -199,6 +200,9 @@ model Product {
   // Unit of measurement (applied to all variants)
   unit        String?  @default("pcs")  // e.g., "pcs", "kg", "liter", "cup"
 
+  // Image
+  mainImageUrl String? // S3 image URL
+
   // Timestamps
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -237,6 +241,9 @@ model ProductVariant {
 
   // Status
   isActive    Boolean  @default(true)
+
+  // Image
+  imageUrl    String?  // S3 image URL
 
   // Timestamps
   createdAt   DateTime @default(now())

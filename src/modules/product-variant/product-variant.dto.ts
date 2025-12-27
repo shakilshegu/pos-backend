@@ -19,6 +19,9 @@ export const CreateProductVariantSchema = z.object({
   // Status
   isActive: z.boolean().optional(),
 
+  // Image
+  imageUrl: z.string().url().optional(),
+
   // For initial inventory setup
   initialStock: z.number().int().min(0).optional(),
   reorderLevel: z.number().int().min(0).optional(),
@@ -36,6 +39,8 @@ export const UpdateProductVariantSchema = z.object({
   attributes: z.record(z.string(), z.any()).optional(),
 
   isActive: z.boolean().optional(),
+
+  imageUrl: z.string().url().optional(),
 });
 
 export type CreateProductVariantDto = z.infer<typeof CreateProductVariantSchema>;

@@ -8,6 +8,7 @@ import productVariantRoutes from './modules/product-variant/product-variant.rout
 import inventoryRoutes from './modules/inventory/inventory.routes';
 import cashShiftRoutes from './modules/cash-shift/cash-shift.routes';
 import orderRoutes from './modules/order/order.routes';
+import uploadRoutes from './modules/upload/upload.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 
 const app: Application = express();
@@ -31,6 +32,7 @@ app.use('/api/product-variants', productVariantRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/shifts', cashShiftRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/uploads', uploadRoutes);
 
 // Error handling
 app.use(notFoundHandler);

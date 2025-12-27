@@ -43,4 +43,11 @@ router.delete(
   companyController.delete
 );
 
+router.patch(
+  '/:id/profile-image',
+  authenticate,
+  requirePermission(Permission.MANAGE_COMPANY),
+  companyController.updateProfileImage
+);
+
 export default router;

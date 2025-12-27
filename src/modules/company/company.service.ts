@@ -59,4 +59,14 @@ export class CompanyService {
 
     return await this.companyRepository.delete(id);
   }
+
+  async updateProfileImage(id: string, profileImageUrl: string) {
+    const company = await this.companyRepository.findById(id);
+
+    if (!company) {
+      throw new AppError('Company not found', 404);
+    }
+
+    return await this.companyRepository.update(id, { profileImageUrl });
+  }
 }

@@ -22,6 +22,9 @@ export const CreateProductSchema = z.object({
   // Status
   isActive: z.boolean().optional(),
 
+  // Image
+  mainImageUrl: z.string().url().optional(),
+
   // Legacy support (backward compatibility)
   price: z.number().positive().optional(), // Maps to baseRetailPrice
   cost: z.number().positive().optional(),  // Maps to baseCost
@@ -45,6 +48,9 @@ export const UpdateProductSchema = z.object({
 
   // Status
   isActive: z.boolean().optional(),
+
+  // Image
+  mainImageUrl: z.string().url().optional(),
 
   // Legacy support
   price: z.number().positive().optional(),
