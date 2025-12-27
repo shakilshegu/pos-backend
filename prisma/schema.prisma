@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  CASHIER
+}
+
+enum Permission {
+  // Dashboard
+  VIEW_DASHBOARD
+
+  // Reports
+  VIEW_REPORTS
+
+  // Company Management
+  MANAGE_COMPANY
+
+  // Subscription Management
+  MANAGE_SUBSCRIPTION
+
+  // Store Management
+  MANAGE_STORES
+
+  // User Management
+  MANAGE_USERS
+
+  // Product Management
+  MANAGE_PRODUCTS
+
+  // Stock Management
+  MANAGE_STOCK
+
+  // Order Operations
+  CREATE_ORDER
+
+  // Payment Operations
+  PROCESS_PAYMENT
+
+  // Receipt Operations
+  PRINT_RECEIPT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE_MONEY
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum OrderStatus {
+  DRAFT      // Order being created (cart)
+  PENDING    // Order created, awaiting payment
+  PAID       // Payment completed
+  CANCELLED  // Order cancelled
+  REFUNDED   // Order refunded
+}
+
+enum CustomerType {
+  RETAIL
+  WHOLESALE
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stores     Store[]
+  users      User[]
+  products   Product[]
+  cashShifts CashShift[]
+  orders     Order[]
+
+  @@index([email])
+}
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  companyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users      User[]
+  categories Category[]
+  products   Product[]
+  inventory  Inventory[]
+  orders     Order[]
+  cashShifts CashShift[]
+
+  @@index([companyId])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  phone     String?
+  role      Role     @default(CASHIER)
+  isActive  Boolean  @default(true)
+  companyId String?  // Optional: SUPER_ADMIN doesn't need company
+  storeId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store       Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  permissions UserPermission[]
+  orders      Order[]
+  payments    Payment[]
+  cashShifts  CashShift[]
+
+  @@index([email])
+  @@index([companyId])
+  @@index([storeId])
+}
+
+model UserPermission {
+  id         String     @id @default(uuid())
+  userId     String
+  permission Permission
+  createdAt  DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([userId])
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  storeId   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([name, storeId])
+  @@index([storeId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String   // e.g., "Cappuccino", "T-Shirt"
+  sku         String?  @unique  // Base product SKU (optional)
+  description String?
+
+  // Base pricing (can be overridden by variants)
+  baseRetailPrice    Decimal  @db.Decimal(10, 2)
+  baseWholesalePrice Decimal? @db.Decimal(10, 2)
+  baseCost           Decimal? @db.Decimal(10, 2)
+
+  taxPercent  Decimal  @default(0) @db.Decimal(5, 2)  // e.g., 10.00 for 10%
+
+  // Organization
+  categoryId  String?
+  companyId   String  // Products belong to a company
+  storeId     String  // But created for specific store
+
+  // Status
+  isActive    Boolean  @default(true)
+
+  // Unit of measurement (applied to all variants)
+  unit        String?  @default("pcs")  // e.g., "pcs", "kg", "liter", "cup"
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  category   Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  company    Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store      Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variants   ProductVariant[]
+  orderItems OrderItem[]      // Order items referencing this product
+
+  @@index([storeId])
+  @@index([companyId])
+  @@index([categoryId])
+  @@index([sku])
+  @@index([name])
+}
+
+model ProductVariant {
+  id          String   @id @default(uuid())
+  name        String   // e.g., "Small", "Medium", "Large", "Red-M", "Blue-L"
+  sku         String?  @unique  // Unique SKU for this variant
+  barcode     String?  @unique  // Barcode for scanning
+
+  // Pricing - Can override base product prices
+  retailPrice    Decimal  @db.Decimal(10, 2)
+  wholesalePrice Decimal? @db.Decimal(10, 2)
+  cost           Decimal? @db.Decimal(10, 2)
+
+  // Flexible attributes stored as JSON
+  // Example: { "size": "Medium", "color": "Blue", "material": "Cotton" }
+  attributes  Json?
+
+  // Product relation
+  productId   String
+
+  // Status
+  isActive    Boolean  @default(true)
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory  Inventory[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@index([sku])
+  @@index([barcode])
+  @@index([name])
+}
+
+model Inventory {
+  id               String   @id @default(uuid())
+  quantity         Int      @default(0)
+  reorderLevel     Int      @default(10)
+
+  // Variant and Store relation (unique per variant per store)
+  productVariantId String
+  storeId          String
+
+  // Timestamps
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([productVariantId, storeId])
+  @@index([productVariantId])
+  @@index([storeId])
+  @@index([quantity])  // For low stock queries
+}
+
+model Order {
+  id            String       @id @default(uuid())
+  orderNumber   String       @unique  // Human-readable: ORD-20240115-001
+
+  // Multi-tenant
+  companyId     String
+  storeId       String
+  cashierId     String       // Cashier who created the order
+  shiftId       String?      // Link to cash shift (required for orders with cash payment)
+
+  // Customer info
+  customerType  CustomerType @default(RETAIL)
+  customerName  String?
+  customerPhone String?
+
+  // Amounts (calculated server-side, immutable after payment)
+  subtotal      Decimal      @db.Decimal(10, 2)  // Sum of all item subtotals
+  taxAmount     Decimal      @default(0) @db.Decimal(10, 2)  // Total tax
+  discountAmount Decimal     @default(0) @db.Decimal(10, 2)  // Total discount
+  totalAmount   Decimal      @db.Decimal(10, 2)  // Final amount = subtotal + tax - discount
+
+  // Order lifecycle
+  status        OrderStatus  @default(DRAFT)
+
+  // Audit & notes
+  notes         String?
+  cancelledAt   DateTime?
+  cancelledBy   String?      // User who cancelled
+  cancelReason  String?
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store         Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  cashier       User        @relation(fields: [cashierId], references: [id])
+  cashShift     CashShift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+  payments      Payment[]   // Support multiple payments (future-proof)
+
+  @@index([companyId])
+  @@index([storeId])
+  @@index([cashierId])
+  @@index([shiftId])
+  @@index([orderNumber])
+  @@index([customerType])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id               String   @id @default(uuid())
+  orderId          String
+
+  // Product references (for audit trail)
+  productId        String   // Original product
+  productVariantId String   // Specific variant sold
+
+  // Price snapshots (IMMUTABLE - never use current product price)
+  productName      String   // Product name at time of sale
+  variantName      String   // Variant name at time of sale (e.g., "Medium", "Large")
+  sku              String?  // SKU at time of sale (for tracking)
+
+  // Pricing (snapshot from time of sale)
+  unitPrice        Decimal  @db.Decimal(10, 2)  // Price per unit (retail or wholesale)
+  quantity         Float    // Support decimal quantities (kg, liters, etc.)
+  taxRate          Decimal  @default(0) @db.Decimal(5, 2)  // Tax percentage (e.g., 10.00)
+  taxAmount        Decimal  @default(0) @db.Decimal(10, 2)  // Calculated tax for this item
+  discountAmount   Decimal  @default(0) @db.Decimal(10, 2)  // Discount for this item
+  subtotal         Decimal  @db.Decimal(10, 2)  // quantity * unitPrice
+  totalAmount      Decimal  @db.Decimal(10, 2)  // subtotal + tax - discount
+
+  createdAt        DateTime @default(now())
+
+  // Relations
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product        @relation(fields: [productId], references: [id])
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([productVariantId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  orderId       String        // Multiple payments per order supported
+  amount        Decimal       @db.Decimal(10, 2)
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  transactionId String?       // External transaction ID (from payment gateway)
+  notes         String?
+  processedBy   String        // User who processed payment
+  shiftId       String?       // Link to cash shift (required for CASH payments)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  processedByUser User       @relation(fields: [processedBy], references: [id])
+  cashShift       CashShift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([processedBy])
+  @@index([shiftId])
+  @@index([method])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CashShift {
+  id           String       @id @default(uuid())
+  userId       String       // Cashier who owns this shift
+  companyId    String
+  storeId      String
+
+  // Cash amounts
+  openingCash  Decimal      @db.Decimal(10, 2)
+  closingCash  Decimal?     @db.Decimal(10, 2)  // Null until closed
+  expectedCash Decimal?     @db.Decimal(10, 2)  // Calculated: openingCash + totalCashPayments
+  difference   Decimal?     @db.Decimal(10, 2)  // Calculated: closingCash - expectedCash
+
+  // Timestamps
+  openedAt     DateTime     @default(now())
+  closedAt     DateTime?
+
+  // Status
+  status       ShiftStatus  @default(OPEN)
+
+  // Notes
+  openingNotes String?
+  closingNotes String?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders   Order[]   // Orders created during this shift
+  payments Payment[] // Cash payments during this shift
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([storeId])
+  @@index([status])
+  @@index([openedAt])
+  @@index([closedAt])
+}
