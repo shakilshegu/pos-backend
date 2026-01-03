@@ -134,4 +134,30 @@ router.post(
   orderController.cancelOrder
 );
 
+/**
+ * @route   POST /api/orders/return
+ * @desc    Create return bill for product returns
+ * @access  Private (CREATE_ORDER permission)
+ * @body    { originalOrderId: string, returnReason: string, items: [{ orderItemId: string, quantity: number }], notes?: string }
+ */
+router.post(
+  '/return',
+  authenticate,
+  requirePermission(Permission.CREATE_ORDER),
+  orderController.createReturnBill
+);
+
+/**
+ * @route   POST /api/orders/:orderId/void
+ * @desc    Void order (same-day only, manager approval required)
+ * @access  Private (MANAGER, ADMIN, SUPER_ADMIN roles)
+ * @body    { voidReason: string }
+ */
+router.post(
+  '/:orderId/void',
+  authenticate,
+  requirePermission(Permission.MANAGE_USERS), // Managers and admins
+  orderController.voidOrder
+);
+
 export default router;

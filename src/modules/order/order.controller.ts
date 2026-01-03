@@ -8,6 +8,8 @@ import {
   UpdateOrderSchema,
   CancelOrderSchema,
   GetOrdersQuerySchema,
+  CreateReturnSchema,
+  VoidOrderSchema,
 } from './order.dto';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 
@@ -335,6 +337,73 @@ export class OrderController {
       res.status(400).json({
         success: false,
         message: error.message || 'Failed to fetch orders',
+      });
+    }
+  };
+
+  /**
+   * Create return bill
+   * POST /api/orders/return
+   */
+  createReturnBill = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { userId, companyId, storeId } = req.user!;
+
+      // Validate request body
+      const validatedData = CreateReturnSchema.parse(req.body);
+
+      const returnOrder = await this.orderService.createReturnBill(
+        validatedData,
+        userId,
+        companyId!,
+        storeId!
+      );
+
+      res.status(201).json({
+        success: true,
+        message: 'Return bill created successfully. Process refund to complete.',
+        data: returnOrder,
+      });
+    } catch (error: any) {
+      console.error('Create return error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to create return bill',
+      });
+    }
+  };
+
+  /**
+   * Void order (same-day only, manager approval required)
+   * POST /api/orders/:id/void
+   */
+  voidOrder = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { userId, role, companyId, storeId } = req.user!;
+
+      // Validate request body
+      const validatedData = VoidOrderSchema.parse(req.body);
+
+      const voidOrder = await this.orderService.voidOrder(
+        id,
+        validatedData,
+        userId,
+        role,
+        companyId!,
+        storeId!
+      );
+
+      res.status(201).json({
+        success: true,
+        message: 'Order voided successfully. Process refund to complete.',
+        data: voidOrder,
+      });
+    } catch (error: any) {
+      console.error('Void order error:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to void order',
       });
     }
   };

@@ -1,4 +1,4 @@
-import { OrderStatus, CustomerType } from '@prisma/client';
+import { OrderStatus, CustomerType, OrderType } from '@prisma/client';
 import { OrderRepository } from './order.repository';
 import { PrismaClient } from '@prisma/client';
 import {
@@ -9,6 +9,8 @@ import {
   UpdateOrderDto,
   CancelOrderDto,
   GetOrdersQueryDto,
+  CreateReturnDto,
+  VoidOrderDto,
 } from './order.dto';
 
 const prisma = new PrismaClient();
@@ -506,5 +508,280 @@ export class OrderService {
     }
 
     return await this.orderRepository.markAsPaid(orderId);
+  }
+
+  /**
+   * Create a RETURN bill for product returns
+   *
+   * Business Rules:
+   * - Original order must be PAID
+   * - Creates new bill with type RETURN
+   * - Items have negative quantities
+   * - Refund must be processed separately
+   * - Inventory restored when return is marked PAID
+   */
+  async createReturnBill(
+    data: CreateReturnDto,
+    userId: string,
+    companyId: string,
+    storeId: string
+  ) {
+    // 1. Validate original order
+    const originalOrder = await this.orderRepository.findById(data.originalOrderId);
+
+    if (!originalOrder) {
+      throw new Error('Original order not found');
+    }
+
+    if (originalOrder.status !== OrderStatus.PAID) {
+      throw new Error('Only PAID orders can be returned');
+    }
+
+    if (originalOrder.type !== OrderType.SALE) {
+      throw new Error('Can only create returns for SALE orders');
+    }
+
+    // Verify access
+    if (originalOrder.companyId !== companyId || originalOrder.storeId !== storeId) {
+      throw new Error('Access denied: Order does not belong to your company/store');
+    }
+
+    // 2. Validate return items exist in original order
+    const originalItemsMap = new Map(
+      originalOrder.items.map(item => [item.id, item])
+    );
+
+    for (const returnItem of data.items) {
+      const originalItem = originalItemsMap.get(returnItem.orderItemId);
+
+      if (!originalItem) {
+        throw new Error(`Order item ${returnItem.orderItemId} not found in original order`);
+      }
+
+      // Validate return quantity doesn't exceed original
+      if (returnItem.quantity > originalItem.quantity) {
+        throw new Error(
+          `Return quantity (${returnItem.quantity}) cannot exceed original quantity (${originalItem.quantity}) for ${originalItem.productName}`
+        );
+      }
+    }
+
+    // 3. Generate return order number
+    const returnOrderNumber = await this.orderRepository.generateOrderNumber(storeId);
+
+    // 4. Create RETURN bill
+    const returnOrder = await prisma.order.create({
+      data: {
+        orderNumber: returnOrderNumber,
+        type: OrderType.RETURN,
+        parentOrderId: originalOrder.id,
+        companyId: originalOrder.companyId,
+        storeId: originalOrder.storeId,
+        cashierId: userId,
+        customerId: originalOrder.customerId,
+        customerType: originalOrder.customerType,
+        customerName: originalOrder.customerName,
+        customerPhone: originalOrder.customerPhone,
+        returnReason: data.returnReason,
+        notes: data.notes,
+        status: OrderStatus.DRAFT,
+        subtotal: 0,
+        taxAmount: 0,
+        discountAmount: 0,
+        totalAmount: 0,
+      },
+    });
+
+    // 5. Add return items with negative quantities
+    for (const returnItem of data.items) {
+      const originalItem = originalItemsMap.get(returnItem.orderItemId)!;
+
+      // Calculate amounts (negative for return)
+      const unitPrice = Number(originalItem.unitPrice);
+      const quantity = -returnItem.quantity; // NEGATIVE quantity
+      const taxRate = Number(originalItem.taxRate);
+      const subtotal = unitPrice * quantity; // Will be negative
+      const taxAmount = (subtotal * taxRate) / 100;
+      const totalAmount = subtotal + taxAmount;
+
+      await prisma.orderItem.create({
+        data: {
+          orderId: returnOrder.id,
+          productId: originalItem.productId,
+          productVariantId: originalItem.productVariantId,
+          productName: originalItem.productName,
+          variantName: originalItem.variantName,
+          sku: originalItem.sku,
+          unitPrice: unitPrice,
+          quantity: quantity, // NEGATIVE
+          taxRate: taxRate,
+          taxAmount: taxAmount, // Negative
+          discountAmount: 0,
+          subtotal: subtotal, // Negative
+          totalAmount: totalAmount, // Negative
+        },
+      });
+    }
+
+    // 6. Recalculate return order totals
+    await this.recalculateOrderTotals(returnOrder.id);
+
+    // 7. Return complete order with items
+    return await this.orderRepository.findById(returnOrder.id);
+  }
+
+  /**
+   * Void an order (same-day only, manager approval required)
+   *
+   * Business Rules:
+   * - Original order must be PAID
+   * - Must be same day as original order
+   * - Manager/Admin role required
+   * - Creates VOID bill with all items negated
+   * - Full refund must be processed
+   */
+  async voidOrder(
+    orderId: string,
+    data: VoidOrderDto,
+    userId: string,
+    userRole: string,
+    companyId: string,
+    storeId: string
+  ) {
+    // 1. Verify manager/admin permission
+    if (!['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole)) {
+      throw new Error('Only managers and admins can void orders');
+    }
+
+    // 2. Validate original order
+    const originalOrder = await this.orderRepository.findById(orderId);
+
+    if (!originalOrder) {
+      throw new Error('Order not found');
+    }
+
+    if (originalOrder.status !== OrderStatus.PAID) {
+      throw new Error('Only PAID orders can be voided');
+    }
+
+    if (originalOrder.type !== OrderType.SALE) {
+      throw new Error('Can only void SALE orders');
+    }
+
+    // Verify access
+    if (originalOrder.companyId !== companyId || originalOrder.storeId !== storeId) {
+      throw new Error('Access denied: Order does not belong to your company/store');
+    }
+
+    // 3. Validate same-day only
+    const orderDate = new Date(originalOrder.createdAt);
+    const today = new Date();
+
+    // Reset time to compare dates only
+    orderDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    if (orderDate.getTime() !== today.getTime()) {
+      throw new Error('Orders can only be voided on the same day they were created');
+    }
+
+    // 4. Generate void order number
+    const voidOrderNumber = await this.orderRepository.generateOrderNumber(storeId);
+
+    // 5. Create VOID bill
+    const voidOrder = await prisma.order.create({
+      data: {
+        orderNumber: voidOrderNumber,
+        type: OrderType.VOID,
+        parentOrderId: originalOrder.id,
+        companyId: originalOrder.companyId,
+        storeId: originalOrder.storeId,
+        cashierId: userId,
+        customerId: originalOrder.customerId,
+        customerType: originalOrder.customerType,
+        customerName: originalOrder.customerName,
+        customerPhone: originalOrder.customerPhone,
+        returnReason: data.voidReason,
+        voidedBy: userId,
+        voidedAt: new Date(),
+        status: OrderStatus.DRAFT,
+        subtotal: 0,
+        taxAmount: 0,
+        discountAmount: 0,
+        totalAmount: 0,
+      },
+    });
+
+    // 6. Copy all items with negative quantities (full reversal)
+    for (const originalItem of originalOrder.items) {
+      const unitPrice = Number(originalItem.unitPrice);
+      const quantity = -originalItem.quantity; // NEGATIVE
+      const taxRate = Number(originalItem.taxRate);
+      const subtotal = unitPrice * quantity;
+      const taxAmount = (subtotal * taxRate) / 100;
+      const totalAmount = subtotal + taxAmount;
+
+      await prisma.orderItem.create({
+        data: {
+          orderId: voidOrder.id,
+          productId: originalItem.productId,
+          productVariantId: originalItem.productVariantId,
+          productName: originalItem.productName,
+          variantName: originalItem.variantName,
+          sku: originalItem.sku,
+          unitPrice: unitPrice,
+          quantity: quantity, // NEGATIVE
+          taxRate: taxRate,
+          taxAmount: taxAmount,
+          discountAmount: 0,
+          subtotal: subtotal,
+          totalAmount: totalAmount,
+        },
+      });
+    }
+
+    // 7. Recalculate void order totals
+    await this.recalculateOrderTotals(voidOrder.id);
+
+    // 8. Return complete order with items
+    return await this.orderRepository.findById(voidOrder.id);
+  }
+
+  /**
+   * Restore inventory for RETURN/VOID orders when marked as PAID
+   * This is called by the payment service after refund is processed
+   */
+  async restoreInventoryForReturn(orderId: string) {
+    const order = await this.orderRepository.findById(orderId);
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (order.type !== OrderType.RETURN && order.type !== OrderType.VOID) {
+      throw new Error('Can only restore inventory for RETURN or VOID orders');
+    }
+
+    // Restore inventory for each item (quantities are negative, so we add them)
+    for (const item of order.items) {
+      const inventory = await prisma.inventory.findFirst({
+        where: {
+          productVariantId: item.productVariantId,
+          storeId: order.storeId,
+        },
+      });
+
+      if (inventory) {
+        // Item quantity is negative for returns, so we subtract it (which adds)
+        const newQuantity = inventory.quantity - item.quantity;
+
+        await prisma.inventory.update({
+          where: { id: inventory.id },
+          data: { quantity: newQuantity },
+        });
+      }
+    }
+
+    console.log(`Inventory restored for ${order.type} order ${order.orderNumber}`);
   }
 }

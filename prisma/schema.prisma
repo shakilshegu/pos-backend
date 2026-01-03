@@ -76,6 +76,13 @@ enum OrderStatus {
   REFUNDED   // Order refunded
 }
 
+enum OrderType {
+  SALE       // Normal sale (default)
+  RETURN     // Return/refund bill (negative quantities)
+  VOID       // Voided bill (same-day cancellation)
+  ADJUSTMENT // Price adjustment (future use)
+}
+
 enum CustomerType {
   RETAIL
   WHOLESALE
@@ -314,6 +321,12 @@ model Order {
   id            String       @id @default(uuid())
   orderNumber   String       @unique  // Human-readable: ORD-20240115-001
 
+  // Bill Type & Parent Reference (for returns/voids)
+  type          OrderType    @default(SALE)       // SALE, RETURN, VOID, ADJUSTMENT
+  parentOrderId String?                           // Original order for returns/voids
+  parentOrder   Order?       @relation("OrderAdjustments", fields: [parentOrderId], references: [id], onDelete: SetNull)
+  adjustments   Order[]      @relation("OrderAdjustments") // Child returns/voids
+
   // Multi-tenant
   companyId     String
   storeId       String
@@ -329,13 +342,18 @@ model Order {
   customerPhone String?
 
   // Amounts (calculated server-side, immutable after payment)
-  subtotal      Decimal      @db.Decimal(10, 2)  // Sum of all item subtotals
+  subtotal      Decimal      @db.Decimal(10, 2)  // Sum of all item subtotals (can be negative for RETURN)
   taxAmount     Decimal      @default(0) @db.Decimal(10, 2)  // Total tax
   discountAmount Decimal     @default(0) @db.Decimal(10, 2)  // Total discount
-  totalAmount   Decimal      @db.Decimal(10, 2)  // Final amount = subtotal + tax - discount
+  totalAmount   Decimal      @db.Decimal(10, 2)  // Final amount (can be negative for RETURN)
 
   // Order lifecycle
   status        OrderStatus  @default(DRAFT)
+
+  // Return/Void tracking
+  returnReason  String?      // Reason for return/void
+  voidedBy      String?      // Manager who approved void
+  voidedAt      DateTime?
 
   // Audit & notes
   notes         String?
@@ -363,6 +381,8 @@ model Order {
   @@index([orderNumber])
   @@index([customerType])
   @@index([status])
+  @@index([type])
+  @@index([parentOrderId])
   @@index([createdAt])
 }
 

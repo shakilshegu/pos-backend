@@ -3,12 +3,14 @@ import {
   PaymentStatus,
   PaymentProvider,
   OrderStatus,
+  OrderType,
   PrismaClient,
 } from '@prisma/client';
 import { PaymentRepository } from './payment.repository';
 import { TapGatewayAdapter } from './tap-gateway.adapter';
 import { CreatePaymentDto, RefundPaymentDto, GetPaymentsQueryDto } from './payment.dto';
 import { CashShiftService } from '../cash-shift/cash-shift.service';
+import { OrderService } from '../order/order.service';
 
 const prisma = new PrismaClient();
 
@@ -16,11 +18,13 @@ export class PaymentService {
   private paymentRepository: PaymentRepository;
   private tapGateway: TapGatewayAdapter;
   private cashShiftService: CashShiftService;
+  private orderService: OrderService;
 
   constructor() {
     this.paymentRepository = new PaymentRepository();
     this.tapGateway = new TapGatewayAdapter();
     this.cashShiftService = new CashShiftService();
+    this.orderService = new OrderService();
   }
 
   /**
@@ -232,8 +236,8 @@ export class PaymentService {
       0
     );
 
-    // If fully paid, update order status to PAID
-    if (totalPaid >= Number(order.totalAmount)) {
+    // If fully paid, update order status to PAID and handle inventory
+    if (totalPaid >= Math.abs(Number(order.totalAmount))) {
       await prisma.order.update({
         where: { id: orderId },
         data: {
@@ -241,8 +245,15 @@ export class PaymentService {
         },
       });
 
-      // TODO: Deduct inventory here
-      console.log(`Order ${order.orderNumber} marked as PAID. Inventory deduction pending.`);
+      // Handle inventory based on order type
+      if (order.type === OrderType.SALE) {
+        // SALE: Deduct inventory (TODO: implement inventory deduction)
+        console.log(`Order ${order.orderNumber} (SALE) marked as PAID. Inventory deduction pending.`);
+      } else if (order.type === OrderType.RETURN || order.type === OrderType.VOID) {
+        // RETURN/VOID: Restore inventory
+        await this.orderService.restoreInventoryForReturn(orderId);
+        console.log(`Order ${order.orderNumber} (${order.type}) marked as PAID. Inventory restored.`);
+      }
     }
   }
 

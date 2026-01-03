@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CustomerType, OrderStatus } from '@prisma/client';
+import { CustomerType, OrderStatus, OrderType } from '@prisma/client';
 
 /**
  * DTO for creating a new order (DRAFT)
@@ -78,15 +78,43 @@ export const CancelOrderSchema = z.object({
 export type CancelOrderDto = z.infer<typeof CancelOrderSchema>;
 
 /**
+ * DTO for creating a return bill
+ */
+export const CreateReturnSchema = z.object({
+  originalOrderId: z.string().uuid('Invalid original order ID'),
+  returnReason: z.string().min(1, 'Return reason is required'),
+  items: z.array(
+    z.object({
+      orderItemId: z.string().uuid('Invalid order item ID'),
+      quantity: z.number().positive('Return quantity must be positive'),
+    })
+  ).min(1, 'At least one item is required for return'),
+  notes: z.string().optional(),
+});
+
+export type CreateReturnDto = z.infer<typeof CreateReturnSchema>;
+
+/**
+ * DTO for voiding an order (same-day only, manager approval required)
+ */
+export const VoidOrderSchema = z.object({
+  voidReason: z.string().min(1, 'Void reason is required'),
+});
+
+export type VoidOrderDto = z.infer<typeof VoidOrderSchema>;
+
+/**
  * Query parameters for listing orders
  */
 export const GetOrdersQuerySchema = z.object({
   status: z.nativeEnum(OrderStatus).optional(),
+  type: z.nativeEnum(OrderType).optional(), // Filter by order type (SALE, RETURN, VOID)
   customerType: z.nativeEnum(CustomerType).optional(),
   customerId: z.string().uuid().optional(), // Filter by customer
   cashierId: z.string().uuid().optional(),
   storeId: z.string().uuid().optional(),
   shiftId: z.string().uuid().optional(),
+  parentOrderId: z.string().uuid().optional(), // Filter returns/voids for specific order
   from: z.string().datetime().optional(), // ISO date string
   to: z.string().datetime().optional(),   // ISO date string
   page: z.coerce.number().int().positive().optional().default(1),
