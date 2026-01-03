@@ -98,6 +98,7 @@ model Company {
   products   Product[]
   cashShifts CashShift[]
   orders     Order[]
+  customers  Customer[]
 
   @@index([email])
 }
@@ -283,6 +284,28 @@ model Inventory {
   @@index([quantity])  // For low stock queries
 }
 
+model Customer {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String   // Primary identifier
+  email       String?
+  address     String?
+  companyId   String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders  Order[]
+
+  // Phone must be unique per company (same customer can't exist twice in one company)
+  @@unique([phone, companyId])
+  @@index([companyId])
+  @@index([phone])
+  @@index([name])
+}
+
 model Order {
   id            String       @id @default(uuid())
   orderNumber   String       @unique  // Human-readable: ORD-20240115-001
@@ -293,7 +316,10 @@ model Order {
   cashierId     String       // Cashier who created the order
   shiftId       String?      // Link to cash shift (required for orders with cash payment)
 
-  // Customer info
+  // Customer relation (nullable - for walk-in customers)
+  customerId    String?      // Link to Customer table (optional)
+
+  // Customer info (snapshot for walk-in or denormalized data)
   customerType  CustomerType @default(RETAIL)
   customerName  String?
   customerPhone String?
@@ -321,6 +347,7 @@ model Order {
   store         Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
   cashier       User        @relation(fields: [cashierId], references: [id])
   cashShift     CashShift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  customer      Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items         OrderItem[]
   payments      Payment[]   // Support multiple payments (future-proof)
 
@@ -328,6 +355,7 @@ model Order {
   @@index([storeId])
   @@index([cashierId])
   @@index([shiftId])
+  @@index([customerId])
   @@index([orderNumber])
   @@index([customerType])
   @@index([status])

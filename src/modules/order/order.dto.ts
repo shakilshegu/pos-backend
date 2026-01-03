@@ -5,6 +5,7 @@ import { CustomerType, OrderStatus } from '@prisma/client';
  * DTO for creating a new order (DRAFT)
  */
 export const CreateOrderSchema = z.object({
+  customerId: z.string().uuid('Invalid customer ID').optional(), // Link to Customer table
   customerType: z.nativeEnum(CustomerType).default(CustomerType.RETAIL),
   customerName: z.string().optional(),
   customerPhone: z.string().optional(),
@@ -38,6 +39,7 @@ export type UpdateOrderItemDto = z.infer<typeof UpdateOrderItemSchema>;
  * DTO for updating order details (only in DRAFT status)
  */
 export const UpdateOrderSchema = z.object({
+  customerId: z.string().uuid('Invalid customer ID').optional().nullable(),
   customerType: z.nativeEnum(CustomerType).optional(),
   customerName: z.string().optional(),
   customerPhone: z.string().optional(),
@@ -70,6 +72,7 @@ export type CancelOrderDto = z.infer<typeof CancelOrderSchema>;
 export const GetOrdersQuerySchema = z.object({
   status: z.nativeEnum(OrderStatus).optional(),
   customerType: z.nativeEnum(CustomerType).optional(),
+  customerId: z.string().uuid().optional(), // Filter by customer
   cashierId: z.string().uuid().optional(),
   storeId: z.string().uuid().optional(),
   shiftId: z.string().uuid().optional(),
