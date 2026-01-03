@@ -142,6 +142,94 @@ companies/{companyId}/
 
 ---
 
+### 9. Customer Management System ⭐
+- ✅ Registered customer profiles
+- ✅ Walk-in customer support
+- ✅ Fast phone number lookup
+- ✅ Order history tracking
+- ✅ Customer search (phone, name, email)
+- ✅ Optional customer linking to orders
+- ✅ Company-scoped unique phone numbers
+
+**Key Endpoints:**
+- `POST /api/customers` - Create customer
+- `GET /api/customers/phone/:phone` - Fast lookup for POS
+- `GET /api/customers/search` - Search customers
+- `GET /api/customers/:id` - Get customer with order history
+
+**Documentation:**
+- [CUSTOMER_SYSTEM_DESIGN.md](CUSTOMER_SYSTEM_DESIGN.md)
+- [CUSTOMER_QUICK_REFERENCE.md](CUSTOMER_QUICK_REFERENCE.md)
+
+---
+
+### 10. POS Order Creation Flow ⭐
+- ✅ Real-world POS billing workflow
+- ✅ Barcode scanning for item addition
+- ✅ Auto quantity increment on duplicate scan
+- ✅ Manual item addition support
+- ✅ Customer attachment (optional)
+- ✅ Order confirmation before payment
+- ✅ Split payment support
+- ✅ Server-side calculations (never trust frontend)
+
+**Key Endpoint:**
+- `POST /api/orders/:orderId/items/barcode` - Add item by scanning barcode
+
+**Flow:**
+```
+1. Create order (DRAFT)
+2. Scan barcode → Add items (auto quantity increment)
+3. Attach customer (optional)
+4. Confirm order (DRAFT → PENDING)
+5. Process payment
+6. Order becomes PAID
+```
+
+**Documentation:**
+- [ORDER_FLOW_SYSTEM.md](ORDER_FLOW_SYSTEM.md)
+
+---
+
+### 11. Payment System (TAP Gateway - Bahrain 🇧🇭) ⭐
+- ✅ Multi-payment method support (CASH, CARD, WALLET)
+- ✅ TAP Payments Gateway integration
+- ✅ Split payment capability
+- ✅ Real-time webhook handling
+- ✅ Refund processing (cash & card)
+- ✅ Payment statistics & reporting
+- ✅ Webhook signature verification
+- ✅ BHD currency support (3 decimal places)
+
+**Payment Methods:**
+- **CASH** - Instant success, manual handling
+- **CARD** - Credit/Debit cards via TAP
+- **WALLET** - Apple Pay / Google Pay via TAP
+
+**Key Endpoints:**
+- `POST /api/payments` - Create payment
+- `GET /api/payments/order/:orderId` - Get order payment summary
+- `POST /api/payments/:id/refund` - Process refund
+- `POST /api/webhooks/tap` - TAP webhook handler
+
+**Payment Flow:**
+```
+CASH: Create → SUCCESS → Update order
+CARD: Create → TAP charge → Redirect → Webhook → SUCCESS → Update order
+```
+
+**Security:**
+- Webhook signature verification (HMAC-SHA256)
+- Permission-based access (PROCESS_PAYMENT)
+- Multi-tenant isolation
+- Server-side amount validation
+
+**Documentation:**
+- [PAYMENT_SYSTEM_DESIGN.md](PAYMENT_SYSTEM_DESIGN.md)
+- [PAYMENT_QUICK_REFERENCE.md](PAYMENT_QUICK_REFERENCE.md)
+
+---
+
 ## 📊 Database Schema
 
 ### Core Models
@@ -151,12 +239,13 @@ companies/{companyId}/
 | **Company** | Multi-tenant organization | Email unique, profile image |
 | **Store** | Physical locations | Belongs to company |
 | **User** | Staff & cashiers | Role + permissions |
+| **Customer** | Customer profiles | Phone unique per company |
 | **Product** | Product catalog | Base pricing, tax |
 | **ProductVariant** | Sellable items | **Barcode**, SKU, pricing |
 | **Inventory** | Stock tracking | Per variant per store |
 | **Order** | Customer orders | DRAFT → PENDING → PAID |
 | **OrderItem** | Order line items | Price snapshots |
-| **Payment** | Payment records | Method, status, shift |
+| **Payment** | Payment records | Method, provider, TAP ref |
 | **CashShift** | Cashier shifts | Opening/closing cash |
 
 ---
@@ -203,6 +292,16 @@ companies/{companyId}/
    - Code examples
    - Common issues
 
+4. **[CUSTOMER_QUICK_REFERENCE.md](CUSTOMER_QUICK_REFERENCE.md)**
+   - Customer integration guide
+   - POS lookup flow
+   - Walk-in vs registered customers
+
+5. **[PAYMENT_QUICK_REFERENCE.md](PAYMENT_QUICK_REFERENCE.md)**
+   - Payment integration guide
+   - Cash vs card flow
+   - Split payment examples
+
 ### For Backend Developers
 1. **[BARCODE_SYSTEM_DESIGN.md](BARCODE_SYSTEM_DESIGN.md)**
    - Complete barcode system architecture
@@ -214,7 +313,22 @@ companies/{companyId}/
    - Upload flow
    - Security configuration
 
-3. **[README.md](README.md)**
+3. **[CUSTOMER_SYSTEM_DESIGN.md](CUSTOMER_SYSTEM_DESIGN.md)**
+   - Customer module architecture
+   - Phone number indexing
+   - Order history tracking
+
+4. **[ORDER_FLOW_SYSTEM.md](ORDER_FLOW_SYSTEM.md)**
+   - Complete POS order creation flow
+   - Barcode scanning logic
+   - Split payment support
+
+5. **[PAYMENT_SYSTEM_DESIGN.md](PAYMENT_SYSTEM_DESIGN.md)**
+   - TAP Payments integration
+   - Webhook handling
+   - Security & validation
+
+6. **[README.md](README.md)**
    - Setup instructions
    - Tech stack
    - Development guidelines

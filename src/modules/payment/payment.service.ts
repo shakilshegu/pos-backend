@@ -8,16 +8,19 @@ import {
 import { PaymentRepository } from './payment.repository';
 import { TapGatewayAdapter } from './tap-gateway.adapter';
 import { CreatePaymentDto, RefundPaymentDto, GetPaymentsQueryDto } from './payment.dto';
+import { CashShiftService } from '../cash-shift/cash-shift.service';
 
 const prisma = new PrismaClient();
 
 export class PaymentService {
   private paymentRepository: PaymentRepository;
   private tapGateway: TapGatewayAdapter;
+  private cashShiftService: CashShiftService;
 
   constructor() {
     this.paymentRepository = new PaymentRepository();
     this.tapGateway = new TapGatewayAdapter();
+    this.cashShiftService = new CashShiftService();
   }
 
   /**
@@ -93,7 +96,14 @@ export class PaymentService {
         ? PaymentProvider.INTERNAL
         : PaymentProvider.TAP;
 
-    // 4. Create payment record
+    // 4. Validate cash shift for CASH payments
+    let shiftId: string | undefined;
+    if (data.method === PaymentMethod.CASH) {
+      // CASH payments require an open shift
+      shiftId = await this.cashShiftService.validateCashPayment(userId, storeId);
+    }
+
+    // 5. Create payment record
     const payment = await this.paymentRepository.create({
       amount: data.amount,
       currency: 'BHD',
@@ -102,6 +112,7 @@ export class PaymentService {
       provider,
       customerRef: data.customerRef,
       notes: data.notes,
+      shiftId, // Link to cash shift if CASH payment
       order: {
         connect: { id: data.orderId },
       },
@@ -112,7 +123,7 @@ export class PaymentService {
       storeId,
     });
 
-    // 5. Handle based on payment method
+    // 6. Handle based on payment method
     if (data.method === PaymentMethod.CASH) {
       // CASH: Mark as SUCCESS immediately
       await this.markPaymentSuccess(payment.id, null, {
