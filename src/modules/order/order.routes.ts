@@ -72,6 +72,19 @@ router.post(
 );
 
 /**
+ * @route   POST /api/orders/:orderId/items/barcode
+ * @desc    Add item to order by scanning barcode (POS)
+ * @access  Private (CREATE_ORDER permission, order owner)
+ * @body    { barcode: string, quantity?: number, discountAmount?: number }
+ */
+router.post(
+  '/:orderId/items/barcode',
+  authenticate,
+  requirePermission(Permission.CREATE_ORDER),
+  orderController.addItemByBarcode
+);
+
+/**
  * @route   PATCH /api/orders/:orderId/items/:itemId
  * @desc    Update order item
  * @access  Private (CREATE_ORDER permission, order owner)

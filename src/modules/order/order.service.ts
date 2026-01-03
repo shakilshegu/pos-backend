@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import {
   CreateOrderDto,
   AddOrderItemDto,
+  AddOrderItemByBarcodeDto,
   UpdateOrderItemDto,
   UpdateOrderDto,
   CancelOrderDto,
@@ -109,6 +110,132 @@ export class OrderService {
     await this.recalculateOrderTotals(orderId);
 
     return orderItem;
+  }
+
+  /**
+   * Add item to order by barcode (POS scanning)
+   * If item already exists in order, increase quantity
+   * If not, add as new item
+   */
+  async addItemByBarcode(
+    orderId: string,
+    data: AddOrderItemByBarcodeDto,
+    userId: string,
+    companyId: string,
+    storeId: string
+  ) {
+    // Get order and validate
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    // Only DRAFT orders can be modified
+    if (order.status !== OrderStatus.DRAFT) {
+      throw new Error('Cannot modify order that is not in DRAFT status');
+    }
+
+    // Verify order belongs to user's company and store
+    if (order.companyId !== companyId || order.storeId !== storeId) {
+      throw new Error('Access denied: Order does not belong to your company/store');
+    }
+
+    // Find product variant by barcode
+    const productVariant = await prisma.productVariant.findUnique({
+      where: { barcode: data.barcode },
+      include: {
+        product: {
+          include: {
+            company: true,
+            store: true,
+          },
+        },
+        inventory: {
+          where: {
+            storeId: storeId,
+          },
+        },
+      },
+    });
+
+    if (!productVariant) {
+      throw new Error('Product not found with barcode: ' + data.barcode);
+    }
+
+    if (!productVariant.isActive || !productVariant.product.isActive) {
+      throw new Error('Product is inactive');
+    }
+
+    // Verify product belongs to same company
+    if (productVariant.product.companyId !== companyId) {
+      throw new Error('Product does not belong to your company');
+    }
+
+    // Check inventory availability
+    const inventory = productVariant.inventory[0];
+    if (!inventory || inventory.quantity <= 0) {
+      throw new Error(
+        `Product "${productVariant.product.name} - ${productVariant.name}" is out of stock`
+      );
+    }
+
+    // Check if requested quantity is available
+    if (inventory.quantity < data.quantity) {
+      throw new Error(
+        `Insufficient stock. Available: ${inventory.quantity}, Requested: ${data.quantity}`
+      );
+    }
+
+    // Check if item already exists in order
+    const existingItem = order.items.find(
+      (item) => item.productVariantId === productVariant.id
+    );
+
+    if (existingItem) {
+      // Item exists: Increase quantity
+      const newQuantity = existingItem.quantity + data.quantity;
+
+      // Check if new quantity exceeds available stock
+      if (newQuantity > inventory.quantity) {
+        throw new Error(
+          `Insufficient stock. Available: ${inventory.quantity}, Total requested: ${newQuantity}`
+        );
+      }
+
+      // Update existing item quantity
+      const updatedItem = await this.updateOrderItem(
+        orderId,
+        existingItem.id,
+        {
+          quantity: newQuantity,
+          discountAmount: Number(existingItem.discountAmount) + data.discountAmount,
+        },
+        userId
+      );
+
+      return {
+        action: 'updated',
+        message: `Quantity increased to ${newQuantity}`,
+        orderItem: updatedItem,
+      };
+    } else {
+      // Item doesn't exist: Add new item
+      const orderItem = await this.addItemToOrder(
+        orderId,
+        {
+          productVariantId: productVariant.id,
+          quantity: data.quantity,
+          discountAmount: data.discountAmount,
+        },
+        userId
+      );
+
+      return {
+        action: 'added',
+        message: 'Item added to order',
+        orderItem: orderItem,
+      };
+    }
   }
 
   /**

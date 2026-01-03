@@ -26,6 +26,17 @@ export const AddOrderItemSchema = z.object({
 export type AddOrderItemDto = z.infer<typeof AddOrderItemSchema>;
 
 /**
+ * DTO for adding an item by barcode (POS scanning)
+ */
+export const AddOrderItemByBarcodeSchema = z.object({
+  barcode: z.string().min(1, 'Barcode is required'),
+  quantity: z.number().positive('Quantity must be positive').optional().default(1),
+  discountAmount: z.number().min(0, 'Discount cannot be negative').optional().default(0),
+});
+
+export type AddOrderItemByBarcodeDto = z.infer<typeof AddOrderItemByBarcodeSchema>;
+
+/**
  * DTO for updating an order item
  */
 export const UpdateOrderItemSchema = z.object({

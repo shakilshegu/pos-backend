@@ -3,6 +3,7 @@ import { OrderService } from './order.service';
 import {
   CreateOrderSchema,
   AddOrderItemSchema,
+  AddOrderItemByBarcodeSchema,
   UpdateOrderItemSchema,
   UpdateOrderSchema,
   CancelOrderSchema,
@@ -85,6 +86,50 @@ export class OrderController {
       res.status(400).json({
         success: false,
         message: error.message || 'Failed to add item to order',
+      });
+    }
+  };
+
+  /**
+   * Add item to order by barcode (POS scanning)
+   * POST /api/orders/:orderId/items/barcode
+   */
+  addItemByBarcode = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const userId = req.user!.userId;
+      const companyId = req.user!.companyId;
+      const storeId = req.user!.storeId;
+      const { orderId } = req.params;
+
+      if (!companyId || !storeId) {
+        res.status(400).json({
+          success: false,
+          message: 'Company and store information required',
+        });
+        return;
+      }
+
+      // Validate input
+      const validatedData = AddOrderItemByBarcodeSchema.parse(req.body);
+
+      const result = await this.orderService.addItemByBarcode(
+        orderId,
+        validatedData,
+        userId,
+        companyId,
+        storeId
+      );
+
+      res.status(result.action === 'added' ? 201 : 200).json({
+        success: true,
+        message: result.message,
+        action: result.action,
+        data: result.orderItem,
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        message: error.message || 'Failed to add item by barcode',
       });
     }
   };
