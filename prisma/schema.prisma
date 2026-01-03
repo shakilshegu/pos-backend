@@ -52,21 +52,25 @@ enum Permission {
 
 enum PaymentMethod {
   CASH
-  CARD
-  MOBILE_MONEY
-  BANK_TRANSFER
+  CARD      // Credit/Debit card via TAP
+  WALLET    // Apple Pay / Google Pay via TAP
 }
 
 enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
+  INITIATED  // Payment created, awaiting confirmation
+  SUCCESS    // Payment successful
+  FAILED     // Payment failed
+  REFUNDED   // Payment refunded
+}
+
+enum PaymentProvider {
+  INTERNAL   // For CASH payments
+  TAP        // TAP Payment Gateway
 }
 
 enum OrderStatus {
   DRAFT      // Order being created (cart)
-  PENDING    // Order created, awaiting payment
+  PENDING    // Order confirmed, awaiting payment (renamed from OPEN for consistency)
   PAID       // Payment completed
   CANCELLED  // Order cancelled
   REFUNDED   // Order refunded
@@ -397,27 +401,57 @@ model OrderItem {
 }
 
 model Payment {
-  id            String        @id @default(uuid())
-  orderId       String        // Multiple payments per order supported
-  amount        Decimal       @db.Decimal(10, 2)
-  method        PaymentMethod
-  status        PaymentStatus @default(PENDING)
-  transactionId String?       // External transaction ID (from payment gateway)
-  notes         String?
-  processedBy   String        // User who processed payment
-  shiftId       String?       // Link to cash shift (required for CASH payments)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id            String          @id @default(uuid())
+  orderId       String          // Multiple payments per order supported
+  companyId     String          // Multi-tenant isolation
+  storeId       String          // Store where payment was made
 
+  // Payment details
+  amount        Decimal         @db.Decimal(10, 2)
+  currency      String          @default("BHD")  // Bahraini Dinar
+  method        PaymentMethod
+  status        PaymentStatus   @default(INITIATED)
+
+  // Payment provider
+  provider      PaymentProvider @default(INTERNAL)
+  providerRef   String?         @unique  // TAP charge ID or reference
+
+  // TAP specific fields (stored as JSON for flexibility)
+  providerData  Json?           // Store TAP response data
+
+  // Customer reference (for TAP)
+  customerRef   String?         // Customer identifier for TAP
+
+  // Notes and metadata
+  notes         String?
+  failureReason String?         // Reason if payment failed
+
+  // Processing info
+  processedBy   String          // User who initiated payment
+  shiftId       String?         // Link to cash shift (required for CASH payments)
+
+  // Refund tracking
+  refundedAt    DateTime?
+  refundedBy    String?         // User who processed refund
+  refundReason  String?
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Relations
   order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   processedByUser User       @relation(fields: [processedBy], references: [id])
   cashShift       CashShift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([companyId])
+  @@index([storeId])
   @@index([processedBy])
   @@index([shiftId])
   @@index([method])
   @@index([status])
+  @@index([provider])
+  @@index([providerRef])
   @@index([createdAt])
 }
 
