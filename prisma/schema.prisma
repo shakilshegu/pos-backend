@@ -8,153 +8,65 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-enum Role {
-  SUPER_ADMIN
-  ADMIN
-  MANAGER
-  CASHIER
-}
-
-enum Permission {
-  // Dashboard
-  VIEW_DASHBOARD
-
-  // Reports
-  VIEW_REPORTS
-
-  // Company Management
-  MANAGE_COMPANY
-
-  // Subscription Management
-  MANAGE_SUBSCRIPTION
-
-  // Store Management
-  MANAGE_STORES
-
-  // User Management
-  MANAGE_USERS
-
-  // Product Management
-  MANAGE_PRODUCTS
-
-  // Stock Management
-  MANAGE_STOCK
-
-  // Order Operations
-  CREATE_ORDER
-
-  // Payment Operations
-  PROCESS_PAYMENT
-
-  // Receipt Operations
-  PRINT_RECEIPT
-}
-
-enum PaymentMethod {
-  CASH
-  CARD      // Credit/Debit card via TAP
-  WALLET    // Apple Pay / Google Pay via TAP
-}
-
-enum PaymentStatus {
-  INITIATED  // Payment created, awaiting confirmation
-  SUCCESS    // Payment successful
-  FAILED     // Payment failed
-  REFUNDED   // Payment refunded
-}
-
-enum PaymentProvider {
-  INTERNAL   // For CASH payments
-  TAP        // TAP Payment Gateway
-}
-
-enum OrderStatus {
-  DRAFT      // Order being created (cart)
-  PENDING    // Order confirmed, awaiting payment (renamed from OPEN for consistency)
-  PAID       // Payment completed
-  CANCELLED  // Order cancelled
-  REFUNDED   // Order refunded
-}
-
-enum OrderType {
-  SALE       // Normal sale (default)
-  RETURN     // Return/refund bill (negative quantities)
-  VOID       // Voided bill (same-day cancellation)
-  ADJUSTMENT // Price adjustment (future use)
-}
-
-enum CustomerType {
-  RETAIL
-  WHOLESALE
-}
-
-enum ShiftStatus {
-  OPEN
-  CLOSED
-}
-
 model Company {
-  id              String   @id @default(uuid())
+  id              String      @id @default(uuid())
   name            String
-  email           String   @unique
+  email           String      @unique
   phone           String?
   address         String?
-  profileImageUrl String?  // S3 image URL
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  stores     Store[]
-  users      User[]
-  products   Product[]
-  cashShifts CashShift[]
-  orders     Order[]
-  customers  Customer[]
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  profileImageUrl String?
+  cashShifts      CashShift[]
+  customers       Customer[]
+  orders          Order[]
+  products        Product[]
+  stores          Store[]
+  users           User[]
 
   @@index([email])
 }
 
 model Store {
-  id        String   @id @default(uuid())
-  name      String
-  address   String?
-  phone     String?
-  isActive  Boolean  @default(true)
-  companyId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  users      User[]
+  id         String      @id @default(uuid())
+  name       String
+  address    String?
+  phone      String?
+  isActive   Boolean     @default(true)
+  companyId  String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  cashShifts CashShift[]
   categories Category[]
-  products   Product[]
   inventory  Inventory[]
   orders     Order[]
-  cashShifts CashShift[]
+  products   Product[]
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  users      User[]
 
   @@index([companyId])
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  phone     String?
-  role      Role     @default(CASHIER)
-  isActive  Boolean  @default(true)
-  companyId String?  // Optional: SUPER_ADMIN doesn't need company
-  storeId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company     Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  store       Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
-  permissions UserPermission[]
+  id          String           @id @default(uuid())
+  email       String           @unique
+  password    String
+  firstName   String
+  lastName    String
+  phone       String?
+  role        Role             @default(CASHIER)
+  isActive    Boolean          @default(true)
+  companyId   String?
+  storeId     String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  cashShifts  CashShift[]
   orders      Order[]
   payments    Payment[]
-  cashShifts  CashShift[]
+  company     Company?         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store       Store?           @relation(fields: [storeId], references: [id])
+  permissions UserPermission[]
 
   @@index([email])
   @@index([companyId])
@@ -166,65 +78,48 @@ model UserPermission {
   userId     String
   permission Permission
   createdAt  DateTime   @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, permission])
   @@index([userId])
 }
 
 model Category {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
   storeId   String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  products Product[]
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products  Product[]
 
   @@unique([name, storeId])
   @@index([storeId])
 }
 
 model Product {
-  id          String   @id @default(uuid())
-  name        String   // e.g., "Cappuccino", "T-Shirt"
-  sku         String?  @unique  // Base product SKU (optional)
-  description String?
-
-  // Base pricing (can be overridden by variants)
-  baseRetailPrice    Decimal  @db.Decimal(10, 2)
-  baseWholesalePrice Decimal? @db.Decimal(10, 2)
-  baseCost           Decimal? @db.Decimal(10, 2)
-
-  taxPercent  Decimal  @default(0) @db.Decimal(5, 2)  // e.g., 10.00 for 10%
-
-  // Organization
-  categoryId  String?
-  companyId   String  // Products belong to a company
-  storeId     String  // But created for specific store
-
-  // Status
-  isActive    Boolean  @default(true)
-
-  // Unit of measurement (applied to all variants)
-  unit        String?  @default("pcs")  // e.g., "pcs", "kg", "liter", "cup"
-
-  // Image
-  mainImageUrl String? // S3 image URL
-
-  // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  category   Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  company    Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  store      Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  variants   ProductVariant[]
-  orderItems OrderItem[]      // Order items referencing this product
+  id                 String           @id @default(uuid())
+  name               String
+  description        String?
+  sku                String?          @unique
+  isActive           Boolean          @default(true)
+  storeId            String
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  baseCost           Decimal?         @db.Decimal(10, 2)
+  baseRetailPrice    Decimal          @db.Decimal(10, 2)
+  baseWholesalePrice Decimal?         @db.Decimal(10, 2)
+  categoryId         String?
+  companyId          String
+  mainImageUrl       String?
+  taxPercent         Decimal          @default(0) @db.Decimal(5, 2)
+  unit               String?          @default("pcs")
+  orderItems         OrderItem[]
+  category           Category?        @relation(fields: [categoryId], references: [id])
+  company            Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store              Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  variants           ProductVariant[]
 
   @@index([storeId])
   @@index([companyId])
@@ -234,37 +129,22 @@ model Product {
 }
 
 model ProductVariant {
-  id          String   @id @default(uuid())
-  name        String   // e.g., "Small", "Medium", "Large", "Red-M", "Blue-L"
-  sku         String?  @unique  // Unique SKU for this variant
-  barcode     String?  @unique  // Barcode for scanning
-
-  // Pricing - Can override base product prices
-  retailPrice    Decimal  @db.Decimal(10, 2)
-  wholesalePrice Decimal? @db.Decimal(10, 2)
-  cost           Decimal? @db.Decimal(10, 2)
-
-  // Flexible attributes stored as JSON
-  // Example: { "size": "Medium", "color": "Blue", "material": "Cotton" }
-  attributes  Json?
-
-  // Product relation
-  productId   String
-
-  // Status
-  isActive    Boolean  @default(true)
-
-  // Image
-  imageUrl    String?  // S3 image URL
-
-  // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  inventory  Inventory[]
-  orderItems OrderItem[]
+  id             String      @id @default(uuid())
+  name           String
+  sku            String?     @unique
+  barcode        String?     @unique
+  retailPrice    Decimal     @db.Decimal(10, 2)
+  wholesalePrice Decimal?    @db.Decimal(10, 2)
+  cost           Decimal?    @db.Decimal(10, 2)
+  attributes     Json?
+  productId      String
+  isActive       Boolean     @default(true)
+  imageUrl       String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  inventory      Inventory[]
+  orderItems     OrderItem[]
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([sku])
@@ -273,44 +153,35 @@ model ProductVariant {
 }
 
 model Inventory {
-  id               String   @id @default(uuid())
-  quantity         Int      @default(0)
-  reorderLevel     Int      @default(10)
-
-  // Variant and Store relation (unique per variant per store)
+  id               String         @id @default(uuid())
+  quantity         Int            @default(0)
+  reorderLevel     Int            @default(10)
   productVariantId String
   storeId          String
-
-  // Timestamps
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  // Relations
-  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
-  store          Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+  store            Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@unique([productVariantId, storeId])
   @@index([productVariantId])
   @@index([storeId])
-  @@index([quantity])  // For low stock queries
+  @@index([quantity])
 }
 
 model Customer {
-  id          String   @id @default(uuid())
-  name        String
-  phone       String   // Primary identifier
-  email       String?
-  address     String?
-  companyId   String
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  companyId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orders    Order[]
 
-  // Relations
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  orders  Order[]
-
-  // Phone must be unique per company (same customer can't exist twice in one company)
   @@unique([phone, companyId])
   @@index([companyId])
   @@index([phone])
@@ -318,60 +189,41 @@ model Customer {
 }
 
 model Order {
-  id            String       @id @default(uuid())
-  orderNumber   String       @unique  // Human-readable: ORD-20240115-001
-
-  // Bill Type & Parent Reference (for returns/voids)
-  type          OrderType    @default(SALE)       // SALE, RETURN, VOID, ADJUSTMENT
-  parentOrderId String?                           // Original order for returns/voids
-  parentOrder   Order?       @relation("OrderAdjustments", fields: [parentOrderId], references: [id], onDelete: SetNull)
-  adjustments   Order[]      @relation("OrderAdjustments") // Child returns/voids
-
-  // Multi-tenant
-  companyId     String
-  storeId       String
-  cashierId     String       // Cashier who created the order
-  shiftId       String?      // Link to cash shift (required for orders with cash payment)
-
-  // Customer relation (nullable - for walk-in customers)
-  customerId    String?      // Link to Customer table (optional)
-
-  // Customer info (snapshot for walk-in or denormalized data)
-  customerType  CustomerType @default(RETAIL)
-  customerName  String?
-  customerPhone String?
-
-  // Amounts (calculated server-side, immutable after payment)
-  subtotal      Decimal      @db.Decimal(10, 2)  // Sum of all item subtotals (can be negative for RETURN)
-  taxAmount     Decimal      @default(0) @db.Decimal(10, 2)  // Total tax
-  discountAmount Decimal     @default(0) @db.Decimal(10, 2)  // Total discount
-  totalAmount   Decimal      @db.Decimal(10, 2)  // Final amount (can be negative for RETURN)
-
-  // Order lifecycle
-  status        OrderStatus  @default(DRAFT)
-
-  // Return/Void tracking
-  returnReason  String?      // Reason for return/void
-  voidedBy      String?      // Manager who approved void
-  voidedAt      DateTime?
-
-  // Audit & notes
-  notes         String?
-  cancelledAt   DateTime?
-  cancelledBy   String?      // User who cancelled
-  cancelReason  String?
-
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  // Relations
-  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  store         Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  cashier       User        @relation(fields: [cashierId], references: [id])
-  cashShift     CashShift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  customer      Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  items         OrderItem[]
-  payments      Payment[]   // Support multiple payments (future-proof)
+  id             String       @id @default(uuid())
+  orderNumber    String       @unique
+  status         OrderStatus  @default(DRAFT)
+  subtotal       Decimal      @db.Decimal(10, 2)
+  notes          String?
+  storeId        String
+  cashierId      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  cancelReason   String?
+  cancelledAt    DateTime?
+  cancelledBy    String?
+  companyId      String
+  customerName   String?
+  customerPhone  String?
+  customerType   CustomerType @default(RETAIL)
+  discountAmount Decimal      @default(0) @db.Decimal(10, 2)
+  shiftId        String?
+  taxAmount      Decimal      @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal      @db.Decimal(10, 2)
+  customerId     String?
+  parentOrderId  String?
+  returnReason   String?
+  type           OrderType    @default(SALE)
+  voidedAt       DateTime?
+  voidedBy       String?
+  cashier        User         @relation(fields: [cashierId], references: [id])
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer       Customer?    @relation(fields: [customerId], references: [id])
+  parentOrder    Order?       @relation("OrderAdjustments", fields: [parentOrderId], references: [id])
+  adjustments    Order[]      @relation("OrderAdjustments")
+  cashShift      CashShift?   @relation(fields: [shiftId], references: [id])
+  store          Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  items          OrderItem[]
+  payments       Payment[]
 
   @@index([companyId])
   @@index([storeId])
@@ -387,33 +239,24 @@ model Order {
 }
 
 model OrderItem {
-  id               String   @id @default(uuid())
+  id               String         @id @default(uuid())
+  quantity         Float
+  subtotal         Decimal        @db.Decimal(10, 2)
   orderId          String
-
-  // Product references (for audit trail)
-  productId        String   // Original product
-  productVariantId String   // Specific variant sold
-
-  // Price snapshots (IMMUTABLE - never use current product price)
-  productName      String   // Product name at time of sale
-  variantName      String   // Variant name at time of sale (e.g., "Medium", "Large")
-  sku              String?  // SKU at time of sale (for tracking)
-
-  // Pricing (snapshot from time of sale)
-  unitPrice        Decimal  @db.Decimal(10, 2)  // Price per unit (retail or wholesale)
-  quantity         Float    // Support decimal quantities (kg, liters, etc.)
-  taxRate          Decimal  @default(0) @db.Decimal(5, 2)  // Tax percentage (e.g., 10.00)
-  taxAmount        Decimal  @default(0) @db.Decimal(10, 2)  // Calculated tax for this item
-  discountAmount   Decimal  @default(0) @db.Decimal(10, 2)  // Discount for this item
-  subtotal         Decimal  @db.Decimal(10, 2)  // quantity * unitPrice
-  totalAmount      Decimal  @db.Decimal(10, 2)  // subtotal + tax - discount
-
-  createdAt        DateTime @default(now())
-
-  // Relations
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product        Product        @relation(fields: [productId], references: [id])
-  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+  productId        String
+  createdAt        DateTime       @default(now())
+  discountAmount   Decimal        @default(0) @db.Decimal(10, 2)
+  productName      String
+  productVariantId String
+  sku              String?
+  taxAmount        Decimal        @default(0) @db.Decimal(10, 2)
+  taxRate          Decimal        @default(0) @db.Decimal(5, 2)
+  totalAmount      Decimal        @db.Decimal(10, 2)
+  unitPrice        Decimal        @db.Decimal(10, 2)
+  variantName      String
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product          Product        @relation(fields: [productId], references: [id])
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id])
 
   @@index([orderId])
   @@index([productId])
@@ -421,47 +264,30 @@ model OrderItem {
 }
 
 model Payment {
-  id            String          @id @default(uuid())
-  orderId       String          // Multiple payments per order supported
-  companyId     String          // Multi-tenant isolation
-  storeId       String          // Store where payment was made
-
-  // Payment details
-  amount        Decimal         @db.Decimal(10, 2)
-  currency      String          @default("BHD")  // Bahraini Dinar
-  method        PaymentMethod
-  status        PaymentStatus   @default(INITIATED)
-
-  // Payment provider
-  provider      PaymentProvider @default(INTERNAL)
-  providerRef   String?         @unique  // TAP charge ID or reference
-
-  // TAP specific fields (stored as JSON for flexibility)
-  providerData  Json?           // Store TAP response data
-
-  // Customer reference (for TAP)
-  customerRef   String?         // Customer identifier for TAP
-
-  // Notes and metadata
-  notes         String?
-  failureReason String?         // Reason if payment failed
-
-  // Processing info
-  processedBy   String          // User who initiated payment
-  shiftId       String?         // Link to cash shift (required for CASH payments)
-
-  // Refund tracking
-  refundedAt    DateTime?
-  refundedBy    String?         // User who processed refund
-  refundReason  String?
-
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-
-  // Relations
-  order           Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  processedByUser User       @relation(fields: [processedBy], references: [id])
-  cashShift       CashShift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  id              String          @id @default(uuid())
+  amount          Decimal         @db.Decimal(10, 2)
+  method          PaymentMethod
+  status          PaymentStatus   @default(INITIATED)
+  notes           String?
+  orderId         String
+  processedBy     String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  shiftId         String?
+  companyId       String
+  currency        String          @default("BHD")
+  customerRef     String?
+  failureReason   String?
+  provider        PaymentProvider @default(INTERNAL)
+  providerData    Json?
+  providerRef     String?         @unique
+  refundReason    String?
+  refundedAt      DateTime?
+  refundedBy      String?
+  storeId         String
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  processedByUser User            @relation(fields: [processedBy], references: [id])
+  cashShift       CashShift?      @relation(fields: [shiftId], references: [id])
 
   @@index([orderId])
   @@index([companyId])
@@ -476,37 +302,26 @@ model Payment {
 }
 
 model CashShift {
-  id           String       @id @default(uuid())
-  userId       String       // Cashier who owns this shift
+  id           String      @id @default(uuid())
+  userId       String
   companyId    String
   storeId      String
-
-  // Cash amounts
-  openingCash  Decimal      @db.Decimal(10, 2)
-  closingCash  Decimal?     @db.Decimal(10, 2)  // Null until closed
-  expectedCash Decimal?     @db.Decimal(10, 2)  // Calculated: openingCash + totalCashPayments
-  difference   Decimal?     @db.Decimal(10, 2)  // Calculated: closingCash - expectedCash
-
-  // Timestamps
-  openedAt     DateTime     @default(now())
+  openingCash  Decimal     @db.Decimal(10, 2)
+  closingCash  Decimal?    @db.Decimal(10, 2)
+  expectedCash Decimal?    @db.Decimal(10, 2)
+  difference   Decimal?    @db.Decimal(10, 2)
+  openedAt     DateTime    @default(now())
   closedAt     DateTime?
-
-  // Status
-  status       ShiftStatus  @default(OPEN)
-
-  // Notes
+  status       ShiftStatus @default(OPEN)
   openingNotes String?
   closingNotes String?
-
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-
-  // Relations
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  orders   Order[]   // Orders created during this shift
-  payments Payment[] // Cash payments during this shift
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  store        Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders       Order[]
+  payments     Payment[]
 
   @@index([userId])
   @@index([companyId])
@@ -514,4 +329,68 @@ model CashShift {
   @@index([status])
   @@index([openedAt])
   @@index([closedAt])
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  CASHIER
+}
+
+enum Permission {
+  VIEW_DASHBOARD
+  VIEW_REPORTS
+  MANAGE_COMPANY
+  MANAGE_SUBSCRIPTION
+  MANAGE_STORES
+  MANAGE_USERS
+  MANAGE_PRODUCTS
+  MANAGE_STOCK
+  CREATE_ORDER
+  PROCESS_PAYMENT
+  PRINT_RECEIPT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  WALLET
+}
+
+enum PaymentStatus {
+  INITIATED
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  INTERNAL
+  TAP
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum OrderType {
+  SALE
+  RETURN
+  VOID
+  ADJUSTMENT
+}
+
+enum CustomerType {
+  RETAIL
+  WHOLESALE
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
 }
