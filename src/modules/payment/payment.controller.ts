@@ -6,7 +6,7 @@ import {
   GetPaymentsQuerySchema,
   TapWebhookSchema,
 } from './payment.dto';
-import { AuthRequest } from '../../types/auth.types';
+import { AuthRequest } from '../../middlewares/auth.middleware';
 
 export class PaymentController {
   private paymentService: PaymentService;
